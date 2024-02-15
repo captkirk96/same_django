@@ -321,10 +321,13 @@ class ClusterForm(ModelForm, metaclass=ClusterFormMetaclass):
 
         self.formsets = {}
         for rel_name, formset_class in self.__class__.formsets.items():
+        self.formset_names = kwargs.pop('formset_names', {})
+            # Determine the formset name, checking if a custom name is provided in formset_names
+            formset_name = self.formset_names.get(rel_name, rel_name)
             if prefix:
-                formset_prefix = "%s-%s" % (prefix, rel_name)
+                formset_prefix = "%s-%s" % (prefix, formset_name)
             else:
-                formset_prefix = rel_name
+                formset_prefix = formset_name
 
             child_form_kwargs = {}
             if formset_class.inherit_kwargs:
