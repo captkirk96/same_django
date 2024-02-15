@@ -373,7 +373,8 @@ class ModelIterable(FakeQuerySetIterable):
 
 class DictIterable(FakeQuerySetIterable):
     def __iter__(self):
-        field_names = self.queryset.dict_fields or [field.name for field in self.queryset.model._meta.fields]
+        # Use all model fields if dict_fields is empty, mimicking Django's values() behavior
+        field_names = self.queryset.dict_fields if self.queryset.dict_fields else [field.name for field in self.queryset.model._meta.fields]
         for obj in self.queryset.results:
             yield {
                 field_name: extract_field_value(obj, field_name, pk_only=True, suppress_fielddoesnotexist=True)
@@ -383,7 +384,8 @@ class DictIterable(FakeQuerySetIterable):
 
 class ValuesListIterable(FakeQuerySetIterable):
     def __iter__(self):
-        field_names = self.queryset.tuple_fields or [field.name for field in self.queryset.model._meta.fields]
+        # Use all model fields if tuple_fields is empty, mimicking Django's values_list() behavior
+        field_names = self.queryset.tuple_fields if self.queryset.tuple_fields else [field.name for field in self.queryset.model._meta.fields]
         for obj in self.queryset.results:
             yield tuple([extract_field_value(obj, field_name, pk_only=True, suppress_fielddoesnotexist=True) for field_name in field_names])
 
@@ -490,26 +492,33 @@ class FakeQuerySet(object):
         return self
 
     def values(self, *fields):
+        # Enhanced values() method to support chaining and correctly handle dict_fields
+        # This method returns a clone of the queryset with updated dict_fields and iterable_class
+        # to ensure lazy evaluation and compatibility with other queryset modifiers.
         clone = self.get_clone()
-        clone.dict_fields = fields
-        # Ensure all 'fields' are available model fields
-        for f in fields:
-            get_model_field(self.model, f)
-        clone.iterable_class = DictIterable
+        if fields:  # If specific fields are requested, update dict_fields
+            clone.dict_fields = fields
+            # Verify that specified fields are valid model fields
+            for field in fields:
+                get_model_field(self.model, field)
+        clone.iterable_class = DictIterable  # Set the iterable class to DictIterable for values() behavior
         return clone
 
     def values_list(self, *fields, flat=None):
+        # Enhanced values_list() method to support chaining, the flat parameter, and compatibility with values()
+        # This method returns a clone of the queryset with updated tuple_fields and iterable_class.
         clone = self.get_clone()
-        clone.tuple_fields = fields
-        # Ensure all 'fields' are available model fields
-        for f in fields:
-            get_model_field(self.model, f)
-        if flat:
-            if len(fields) > 1:
-                raise TypeError("'flat' is not valid when values_list is called with more than one field.")
-            clone.iterable_class = FlatValuesListIterable
+        if fields:  # If specific fields are requested, update tuple_fields
+            clone.tuple_fields = fields
+            # Verify that specified fields are valid model fields
+            for field in fields:
+                get_model_field(self.model, field)
+        if flat:  # Handle the flat parameter
+            if len(fields) != 1:
+                raise TypeError("'flat' is only valid when values_list is called with exactly one field.")
+            clone.iterable_class = FlatValuesListIterable  # Set iterable class for flat=True behavior
         else:
-            clone.iterable_class = ValuesListIterable
+            clone.iterable_class = ValuesListIterable  # Default iterable class for values_list behavior
         return clone
 
     def order_by(self, *fields):
